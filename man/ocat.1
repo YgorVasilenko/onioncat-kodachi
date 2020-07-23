@@ -1,0 +1,357 @@
+.\" Copyright 2008-2020 Bernhard R. Fischer, Daniel Haslinger.
+.\"
+.\" This file is part of OnionCat.
+.\"
+.\" OnionCat is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, version 3 of the License.
+.\"
+.\" OnionCat is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with OnionCat. If not, see <http://www.gnu.org/licenses/>.
+.\"
+.TH OCAT 1 2020-05-15 "ocat" "OnionCat User's Manual"
+.SH NAME
+ocat \- OnionCat creates a transparent IPv6 layer on top of Tor's or I2P hidden
+services.
+.SH SYNOPSIS
+.B ocat
+\-i \fIonion_id                      (1st form)\fP
+.br
+.B ocat
+\-o \fIIPv6_address                  (2nd form)\fP
+.br
+.B ocat
+[\fIOPTION\fP] \fIonion_id                (3rd form)\fP
+.br
+.B ocat
+\-R [\fIOPTION\fP]\fI                      (4th form)\fP
+.br
+.B ocat
+\-I [\fIOPTION\fP] \fIi2p_id                  (5th form)\fP
+.br
+.SH DESCRIPTION
+OnionCat creates a transparent IPv6 layer on top of Tor's hidden services or
+I2P's tunnels. It transmits any kind of IP-based data transparently through the
+Tor/I2P network on a location hidden basis. You can think of it as a
+peer-to-peer VPN between hidden services.
+
+OnionCat is a stand-alone application which runs in userland and is a connector
+between Tor/I2P and the local OS. Any protocol which is based on IP can be
+transmitted. Of course, UDP and TCP (and probably ICMP) are the most important
+ones but all other protocols can also be forwarded through it.
+
+OnionCat opens a TUN device and assigns an IPv6 address to it. All packets
+forwarded to the TUN device by the kernel are forwarded by OnionCat to other
+OnionCats listening on Tor's hidden service ports or I2P's server tunnels. The
+IPv6 address depends on the \fIonion_id\fP or the i2p_id, respectively. The
+\fIonion_id\fP is the hostname of the locally configured hidden service (see
+\fBtor(8)\fP). Depending on the configuration of Tor the \fIonion_id\fP usually
+can be found at \fI/var/lib/tor/hidden_service/hostname\fP or similar location.
+The \fIi2p_id\fP is the 80 bit long Base32 encoded hostname of the I2P server
+tunnel.
+
+OnionCat has two implemented loopback responders for easier network debugging.
+Ping responses from loopback address fd87:d87e:eb43::dead:beef indicate correct
+network setup between the kernel and OnionCat.
+Ping responses from fd87:d87e:eb43::feed:beef indicate that connection between
+OnionCat and Tor itself works, hidden service correctly configured and enabled.
+
+.SS OPTIONS
+.TP
+\fB\-4\fP
+Enable IPv4 forwarding. See http://www.cypherpunk.at/onioncat_trac/wiki/IPv4
+.br
+IPv4-througth-IPv6 tunnel through OnionCat is recommended instead of using native
+IPv4 forwarding.
+.TP
+\fB\-5\fP \fI'socks5'|'direct'\fP
+This option has a mandatory argument which is literally either \fIsocks5\fP or
+\fIdirect\fP.
+.br
+By default OnionCat uses SOCKS4A (version 4a) to connect to the anonymization
+network proxy (e.g. Tor). With this option set to \fIsocks5\fP, OnionCat uses
+SOCKS5 (version 5 as specified in RFC1928), currently with no authentication
+mechanism. As of today it actually makes no difference but it might be
+desireable in future.
+.br
+If \fIdirect\fP is used, OnionCat does not connect through to SOCKS server but
+instead it connects directly to the remote peers using the hosts lookup
+mechanism (see option \fB\-H\fP).
+This feature is experimental and turns OnionCat into a distributed virtual switch
+based on regular Internet transport instead of Tor. It is useful feature for lab
+setup.
+.TP
+\fB\-a\fP
+OnionCat creates a log file at $HOME/.ocat/connect_log. All incoming connects are
+logged to that file. $HOME is determined from the user under which OnionCat runs
+(see option \-u).
+.TP
+\fB\-b\fP
+Run OnionCat in background. This is default. OnionCat will detach from a running
+shell and close standard IO if no log file is given with option \-L.
+.TP
+\fB\-B\fP
+Run OnionCat in foreground. OnionCat will log to stderr by default.
+.TP
+\fB\-C\fP
+Disable the local controller interface. The controller interfaces listens on
+localhost (127.0.0.1 and ::1 port 8066) for incoming connections. It's
+currently used for debugging purpose and not thread-safe and does not have any
+kind of authentication or authorization mechanism. Hence, it should not be used
+in production environments.
+.TP
+\fB\-d\fP \fIn\fP
+Set debug level to \fIn\fP. Default = 7 which is maximum. Debug output will
+only be created if OnionCat was compiled with option DEBUG (i.e. configure was
+run with option \-\-enable\-debug).
+.TP
+\fB\-e\fP \fIifup\fP
+Execute script \fIifup\fP to bring up the tunnel interface.
+.br
+OnionCat will create a new tunnel interface and execute \fIifup\fP immediatly
+after opening the network interface. This is intended as a universial interface
+for configuring the tunnel device and do additinal tasks when starting
+OnionCat.  The script is executed with the same privilege as OnionCat is
+started, i.e. before dropping privileges. This typically is root. The script is
+run only once at startup.
+
+See below in section EXAMPLES for a typical Linux ifup shell script.
+
+OnionCat executes the file \fIifup\fP with a call to execlp(3) and will pass
+the following environment variables: 
+
+\fBOCAT_IFNAME\fP
+.br
+This variable contains the name of the network interface, e.g. "tun0".
+ 
+\fBOCAT_ADDRESS\fP
+.br
+This variable contains the IPv6 address which is associated with this instance
+of OnionCat and its hidden service address.
+
+\fBOCAT_PREFIXLEN\fP
+.br
+This variable contains the prefix length of the IPv6 prefix which typically is
+48.
+
+\fBOCAT_PREFIX\fP
+.br
+This variable contains the IPv6 prefix, i.e. the network. This typically is
+fd87:d87e:eb43:: in OnionCat (Tor) mode and fd60:db4d:ddb5:: in GarliCat
+(I2P) mode.
+
+\fBOCAT_ONION_URL\fP
+.br
+This variable contains the short onion URL without domain appendix. It is a
+16 character long string.
+
+\fBOCAT_ONION3_URL\fP
+.br
+This variable contains the long onion URL if available which is always true for
+I2P and in case of Tor it is used together with the HSv3 variant.
+
+\fBOCAT_DOMAIN\fP
+.br
+This variable contains the TLD appendix which is .onion for Tor and .b32.i2p
+for I2P.
+
+.TP
+\fB\-f\fP \fIconfig file\fP
+Read initial configuration from \fIconfig file\fP. 
+.TP
+\fB\-g\fP \fIhosts_path\fP
+Set the path to the hosts file. This option automatically enables option \-H
+(see there). If \-g is not set, the path defaults to the system hosts file
+which typically is /etc/hosts on Un*x systems.
+.TP
+\fB\-H\fP
+This option enables the hosts reverse lookup. If OnionCat receives a packet to
+a destination IPv6 address within the OnionCat prefix, it translates it
+directly to a .onion hostname by default. If option \-H is enabled, OnionCat
+instead looks up the hostname in the hosts file (see also \-g). This option is
+always enabled when OnionCat is used in GarliCat mode for I2P and it is required
+with V3 hidden services of Tor (see below).
+.TP
+\fB\-h\fP
+Display short usage message and shows options.
+.TP
+\fB\-i\fP
+Convert \fIonion_id\fP to IPv6 address and exit.
+.TP
+\fB\-I\fP
+Run OnionCat in GarliCat (I2P) mode.
+.TP
+\fB\-l\fP \fI[ip:]port\fP
+Bind OnionCat to specific \fIip \fP and/or \fIport\fP number for incoming
+connections. It defaults to 127.0.0.1:8060. This option could be set
+multiple times. IPv6 addresses must be given in square brackets.
+.br
+The parameter \fI"none"\fP deactivates the listener completely. This is for
+special purpose only and shall not be used in regular operation.
+.TP
+\fB\-L\fP \fIlog_file\fP
+Log output to \fIlog_file\fP. If option is omitted, OnionCat logs to syslog if
+running in background or to stderr if running in foreground. If syslogging is
+desired while running in foreground, specify the special file name "syslog" as
+log file.
+.TP
+\fB\-o\fP \fIIPv6 address\fP
+Convert \fIIPv6 address\fP to \fIonion_id\fP and exit program.
+.TP
+\fB\-p\fP
+Use TAP device instead of TUN device. There are a view differences. See \fBTAP
+DEVICE\fP later.
+.TP
+\fB\-P\fP \fI[pid file]\fP
+Create \fIpid file\fP at \fIpid_file\fP. If the option parameter is omitted OC
+will create a pid file at \fB/var/run/ocat.pid\fP. In the latter case it MUST
+NOT be the last option in the list of options.
+.TP
+\fB\-r\fP
+Run OnionCat as root and do not change user id (see option \fB\-u\fP).
+.TP
+\fB\-R\fP
+Use this option only if you really know what you do! OnionCat generates a
+random local onion_id. With this option it is not necessary to add a hidden
+service to the Tor configuration file \fBtorrc\fP.  One might use OnionCat
+services within Tor as usually but it is NOT possible to receive incoming
+connections. If you plan to also receive connections (e.g.  because you provide
+a service or you use software which opens sockets for incoming connections
+like Bitorrent) you MUST configure a hidden service and supply its hostname to
+OnionCat on the command line.
+Please note that this option does only work if the remote OC does not run in
+unidirectional mode which is default since SVN version 555 (see option
+\fB\-U\fP).
+.TP
+\fB\-s\fP \fIport\fP
+Set OnionCat's virtual hidden service port to \fIport\fP. This should usually
+not be changed.
+.TP
+\fB\-t\fP \fI(IP|[IP:]port)\fP
+Set Tor SOCKS \fIIP\fP and/or \fIport\fP. If no \fIIP\fP is specified 127.0.0.1
+will be used, if no \fIport\fP is specified 9050 will be used as defaults. IPv6
+addresses must be escaped by square brackets.
+.br
+The special parameter \fI"none"\fP disables OnionCat from making outbound
+connections. This shall be used only in special test scenarios.
+.TP
+\fB\-T\fP \fItun_dev\fP
+TUN device file to open for creation of TUN interface. It defaults to
+/dev/net/tun on Linux and /dev/tun0 on most other OSes, or /dev/tap0 if TAP
+mode is in use. Setup of a TUN device needs root permissions. OnionCat
+automatically changes userid after the TUN device is set up correctly.
+.TP
+\fB\-U\fP
+Deactivate unidirectional mode. Before SVN version 555 OnionCat ran only in
+bidirectional mode. This is that a connection to another OC was used for
+outgoing \fIand\fP incoming packets. Since this could be a security risk under
+certain conditions, unidirectional mode was implemented in SVN r555 and set to
+default. With this option bidirectional mode can be enabled again. Please note
+that this does not interoperate with option \fB\-R\fP if the remote OC is
+working in unidirectional mode.
+.TP
+\fB\-u\fP \fIusername\fP
+\fIusername\fP under which OnionCat should run. The uid is changed as soon as
+possible after the tun device setup. If \fB\-u\fP is omitted, on OpenBSD and
+FreeBSD it tries to use the uid of the user "_tor" which is by default used for
+Tor. On all other systems it tries to get the uid for the user "tor". If it
+does not exists (it calls getpwnam(3)) it defaults to the uid 65534.
+
+.SS TAP DEVICE
+Usually OnionCat opens a TUN device which is a layer 3 interface. With option
+\fB\-p\fP OnionCat opens a TAP device instead which is a virtual ethernet
+(layer 2) interface.
+
+.SH EXAMPLES
+A typical ifup script for OnionCat for a modern Linux distribution using the
+`ip` command for configuring network related stuff could look like the
+following:
+
+.in +3n
+.nf
+#!/bin/sh
+
+ip address add $OCAT_ADDRESS/$OCAT_PREFIXLEN dev $OCAT_IFNAME
+ip link set $OCAT_IFNAME up 
+.fi
+
+.SH ONIONCAT AND V3 HIDDEN SERVICES
+Originially Tor's v2 hidden service addresses had a binary length of 80 bits.
+This made it possible to let OnionCat map hidden service addresses to IPv6
+addresses and vice versa. The development of OnionCat started in 2008, and this
+held for a very long time until recently Tor came up with version 3 of hidden
+services. To comply with ongoing development in the field of cryptography the
+new hidden service addresses of Tor (since version 0.3.2) are much bigger,
+meaning 336 bits. This obviously does not fit into an IPv6 address, hence,
+OnionCat is not able any more to translate back and forth between IPv6 and v3
+onion addresses.
+
+As a solution OnionCat offers the possibility to do an external hostname lookup
+within /etc/hosts instead. Please note that for security reasons, OnionCat
+does not use the system resolver, it definitely just reads the local hosts
+file. The big drawback for OnionCat is that with v3 hidden services OnionCat
+does not work out of the box any more. It requires that the destionations are
+configured manually beforehand.
+
+To connect to a v3 hidden service, on the client side add a line to your
+/etc/hosts with the IPv6 address and the v3 hostname and run OnionCat with
+the additional option \fB-H\fP. The hosts entry could look like this (in one
+line!):
+
+\fBfd87:d87e:eb43:45g6:3bbb:9fxf:5877:4319 tulqpcvf7Oeuxzjod6odrpO77ryujc7o0g7kw6c76q9cbnbi7rqskxid.onion\fP
+
+If this client also has a v3 hidden service, you have to enter its
+IPv6/hostname pair to the hosts file on the opposite site as well, except you
+use \fB-U\fP option.
+
+Please note that you could pick any IPv6 address in this case, although I
+suggest to truncate the long hostname just to the last 16 characters for use
+with OnionCat, e.g. truncate
+"tulqpcvf7Oeuxzjod6odrpO77ryujc7o0g7kw6c76q9cbnbi7rqskxid.onion" to
+"6q9cbnbi7rqskxid.onion" and use it as parameter for OnionCat.
+
+.SH NOTES
+In the versions of OnionCat up to 0.3.7 a symlink named gcat was created.
+OnionCat internally handled this as GarliCat which is equal to running ocat
+with the option \fB-I\fP. The symlink was removed due to a name conflict with a
+different binary (see BSD coreutils).
+
+.SH FILES
+$HOME/.ocat/connect_log
+
+.SH AUTHOR
+Concepts, software, and man page written by Bernhard R. Fischer
+<bf@abenteuerland.at>. Package maintenance and additional support by Ferdinand
+Haselbacher, Daniel Haslinger <creo-ocat@blackmesa.at>, and Wim Gaethofs.
+
+.SH "SEE ALSO"
+OnionCat project page https://www.onioncat.org/
+
+OnionCat source packages are found at https://www.cypherpunk.at/ocat/download/Source/
+
+Tor project homepage https://www.torproject.org/
+
+I2P project homepage https://geti2p.net/
+
+.SH COPYRIGHT
+Copyright 2008-2020 Bernhard R. Fischer.
+
+This file is part of OnionCat.
+
+OnionCat is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, version 3 of the License.
+
+OnionCat is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with OnionCat. If not, see <http://www.gnu.org/licenses/>.
+
